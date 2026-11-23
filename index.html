@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic-Tac-Toe</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --panel: #ffffff;
+    --ink: #1f2430;
+    --muted: #6b7180;
+    --line: #d9d4c7;
+    --x: #d9480f;
+    --o: #1c7ed6;
+    --accent: #2b8a3e;
+    --win: #ffe066;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c;
+      --panel: #1f232b;
+      --ink: #eceef2;
+      --muted: #9aa1ad;
+      --line: #343a46;
+      --x: #ff8a4c;
+      --o: #5aa9f0;
+      --accent: #51cf66;
+      --win: #5c4d00;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  main { width: 100%; max-width: 420px; }
+  h1 { margin: 0 0 4px; font-size: 1.8rem; letter-spacing: -0.02em; }
+  .sub { margin: 0 0 24px; color: var(--muted); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+  legend { font-weight: 600; margin-bottom: 10px; }
+  .level {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 8px; cursor: pointer;
+  }
+  .level:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .level input { margin-top: 3px; accent-color: var(--accent); }
+  .level small { display: block; color: var(--muted); margin-top: 2px; }
+  button {
+    font: inherit; font-weight: 600;
+    background: var(--accent); color: #fff;
+    border: 0; border-radius: 10px;
+    padding: 12px 18px; cursor: pointer; width: 100%;
+  }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button:focus-visible, .cell:focus-visible { outline: 3px solid var(--o); outline-offset: 2px; }
+
+  .status { font-size: 1.1rem; font-weight: 600; min-height: 1.6em; margin: 0 0 6px; text-align: center; }
+  .meta { color: var(--muted); text-align: center; margin: 0 0 16px; font-size: 0.9rem; }
+  .board {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    aspect-ratio: 1; margin-bottom: 16px;
+  }
+  .cell {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    font-size: clamp(2.5rem, 14vw, 4rem); font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 0; color: var(--ink); width: auto;
+  }
+  .cell:disabled { cursor: default; }
+  .cell.X { color: var(--x); }
+  .cell.O { color: var(--o); }
+  .cell.win { background: var(--win); }
+  .score { display: flex; justify-content: space-between; text-align: center; margin-bottom: 16px; }
+  .score div { flex: 1; }
+  .score b { display: block; font-size: 1.4rem; }
+  .score span { color: var(--muted); font-size: 0.85rem; }
+  .actions { display: flex; gap: 8px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tic-Tac-Toe</h1>
+  <p class="sub">You against the computer. A coin toss decides who begins.</p>
+
+  <section id="setup" class="panel">
+    <fieldset>
+      <legend>Choose the computer's level</legend>
+      <label class="level">
+        <input type="radio" name="level" value="beginner" checked>
+        <span>Beginner<small>Plays completely random moves.</small></span>
+      </label>
+      <label class="level">
+        <input type="radio" name="level" value="average">
+        <span>Average<small>Plays defensively: takes a winning square and blocks your threats. When it begins, its first move is random.</small></span>
+      </label>
+    </fieldset>
+    <button id="start">Start game</button>
+  </section>
+
+  <section id="game" class="panel hidden">
+    <p class="status" id="status"></p>
+    <p class="meta" id="meta"></p>
+    <div class="board" id="board" role="grid" aria-label="Tic-tac-toe board"></div>
+    <div class="score">
+      <div><b id="sYou">0</b><span>You (X)</span></div>
+      <div><b id="sDraw">0</b><span>Draws</span></div>
+      <div><b id="sCpu">0</b><span>Computer (O)</span></div>
+    </div>
+    <div class="actions">
+      <button id="again">Play again</button>
+      <button id="change" class="secondary">Change level</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const HUMAN = 'X', CPU = 'O';
+const LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+let board, level, current, over, cpuStarted, timer;
+const score = { you: 0, draw: 0, cpu: 0 };
+
+const $ = id => document.getElementById(id);
+const boardEl = $('board');
+const cells = [];
+for (let i = 0; i < 9; i++) {
+  const b = document.createElement('button');
+  b.className = 'cell';
+  b.setAttribute('aria-label', `Square ${i + 1}`);
+  b.addEventListener('click', () => humanMove(i));
+  boardEl.appendChild(b);
+  cells.push(b);
+}
+
+function winner(b) {
+  for (const line of LINES) {
+    const [a, c, d] = line;
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { player: b[a], line };
+  }
+  return b.every(Boolean) ? { player: null, line: [] } : null;
+}
+
+const empty = b => b.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+// Square that would complete a line for `player`, or -1.
+function completingSquare(b, player) {
+  for (const sq of empty(b)) {
+    const t = b.slice(); t[sq] = player;
+    if (winner(t)?.player === player) return sq;
+  }
+  return -1;
+}
+
+// ----- Computer levels -----
+const strategies = {
+  // Beginner: purely random.
+  beginner: b => pick(empty(b)),
+
+  // Average: defensive. If the computer starts, its very first move is random.
+  // Otherwise: finish its own line if possible, else block the human, else random.
+  average: b => {
+    const cpuMoves = b.filter(v => v === CPU).length;
+    if (cpuStarted && cpuMoves === 0) return pick(empty(b));
+    const win = completingSquare(b, CPU);
+    if (win >= 0) return win;
+    const block = completingSquare(b, HUMAN);
+    if (block >= 0) return block;
+    return pick(empty(b));
+  }
+};
+
+function render() {
+  const w = winner(board);
+  board.forEach((v, i) => {
+    cells[i].textContent = v || '';
+    cells[i].className = 'cell' + (v ? ' ' + v : '') + (w?.line.includes(i) ? ' win' : '');
+    cells[i].disabled = over || !!v || current !== HUMAN;
+  });
+}
+
+function setStatus(text) { $('status').textContent = text; }
+
+function finish(w) {
+  over = true;
+  clearTimeout(timer);
+  if (w.player === HUMAN) { score.you++; setStatus('You win! 🎉'); }
+  else if (w.player === CPU) { score.cpu++; setStatus('The computer wins.'); }
+  else { score.draw++; setStatus("It's a draw."); }
+  $('sYou').textContent = score.you;
+  $('sDraw').textContent = score.draw;
+  $('sCpu').textContent = score.cpu;
+  render();
+}
+
+function afterMove() {
+  const w = winner(board);
+  if (w) return finish(w);
+  current = current === HUMAN ? CPU : HUMAN;
+  render();
+  if (current === CPU) {
+    setStatus('Computer is thinking…');
+    timer = setTimeout(cpuMove, 450);
+  } else {
+    setStatus('Your turn — you are X.');
+  }
+}
+
+function humanMove(i) {
+  if (over || current !== HUMAN || board[i]) return;
+  board[i] = HUMAN;
+  afterMove();
+}
+
+function cpuMove() {
+  if (over) return;
+  board[strategies[level](board)] = CPU;
+  afterMove();
+}
+
+function newGame() {
+  clearTimeout(timer);
+  board = Array(9).fill(null);
+  over = false;
+  cpuStarted = Math.random() < 0.5;   // coin toss
+  current = cpuStarted ? CPU : HUMAN;
+  const name = level[0].toUpperCase() + level.slice(1);
+  $('meta').textContent = `Level: ${name} · Coin toss: ${cpuStarted ? 'computer' : 'you'} begin${cpuStarted ? 's' : ''}`;
+  render();
+  if (cpuStarted) { setStatus('Computer begins…'); timer = setTimeout(cpuMove, 650); }
+  else setStatus('You begin — you are X.');
+}
+
+$('start').addEventListener('click', () => {
+  level = document.querySelector('input[name=level]:checked').value;
+  $('setup').classList.add('hidden');
+  $('game').classList.remove('hidden');
+  newGame();
+});
+$('again').addEventListener('click', newGame);
+$('change').addEventListener('click', () => {
+  over = true;
+  clearTimeout(timer);
+  $('game').classList.add('hidden');
+  $('setup').classList.remove('hidden');
+});
+</script>
+</body>
+</html>
